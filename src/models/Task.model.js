@@ -7,6 +7,10 @@ const taskSchema = new Schema(
       ref: "Project",
       required: true,
     },
+    taskNumber: {
+      type: Number,
+      required: true,
+    },
     title: {
       type: String,
       required: true,

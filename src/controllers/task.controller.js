@@ -24,8 +24,13 @@ const createTask = asyncHandler(async (req, res) => {
     throw new ApiError(400, "Assignee is not a member of this project.");
   }
 
+  // Auto-generate sequential task number within the project
+  const lastTask = await Task.findOne({ projectId }).sort({ taskNumber: -1 });
+  const taskNumber = lastTask ? lastTask.taskNumber + 1 : 1;
+
   const task = await Task.create({
     projectId,
+    taskNumber,
     title,
     description: description || "",
     assignedTo,
@@ -57,9 +62,18 @@ const getProjectTasks = asyncHandler(async (req, res) => {
     .populate("assignedBy", "name email")
     .sort({ createdAt: -1 });
 
+  // Ensure every task has a taskNumber (for legacy tasks)
+  const tasksWithNumber = tasks.map((task) => {
+    if (!task.taskNumber) {
+      // Fallback: use the last 4 chars of the task ID as a number
+      return { ...task.toObject(), taskNumber: parseInt(task._id.toString().slice(-4), 16) % 1000 || 1 };
+    }
+    return task;
+  });
+
   return res
     .status(200)
-    .json(new ApiResponse(200, tasks, "Tasks fetched successfully."));
+    .json(new ApiResponse(200, tasksWithNumber, "Tasks fetched successfully."));
 });
 
 // PATCH /api/projects/:projectId/tasks/:taskId
