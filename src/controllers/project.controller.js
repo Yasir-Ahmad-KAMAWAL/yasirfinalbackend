@@ -4,6 +4,40 @@ import { ApiResponse } from "../utils/ApiResponse.js";
 import { Project } from "../models/Project.model.js";
 import { ProjectMember } from "../models/ProjectMember.model.js";
 import { User } from "../models/User.model.js";
+import { Task } from "../models/Task.model.js";
+import { getCompanyAdminStatus } from "../utils/companyAdmin.js";
+
+const formatLead = (leadMembership) => {
+  if (!leadMembership?.userId) return null;
+  const user = leadMembership.userId;
+  return {
+    _id: user._id,
+    name: user.name,
+    email: user.email,
+  };
+};
+
+const attachLeadInfo = async (projects) => {
+  if (!projects.length) return [];
+
+  const projectIds = projects.map((p) => p._id);
+  const leadMemberships = await ProjectMember.find({
+    projectId: { $in: projectIds },
+    role: "lead",
+  })
+    .populate("userId", "name email")
+    .lean();
+
+  const leadByProjectId = Object.fromEntries(
+    leadMemberships.map((m) => [m.projectId.toString(), formatLead(m)])
+  );
+
+  return projects.map((project) => ({
+    ...project,
+    lead: leadByProjectId[project._id.toString()] || null,
+  }));
+};
+
 
 // POST /api/projects
 // Only a company admin can create a project. They must pick an existing
@@ -45,22 +79,54 @@ const createProject = asyncHandler(async (req, res) => {
 });
 
 // GET /api/projects/my
-// Returns every project the current user belongs to (any role) — powers the sidebar.
+// Company admins see every project in their company.
+// Other users see only projects they belong to — powers the sidebar.
 const getMyProjects = asyncHandler(async (req, res) => {
-  const memberships = await ProjectMember.find({ userId: req.user._id })
-    .populate("projectId")
-    .lean();
+  const { isAdmin } = await getCompanyAdminStatus(
+    req.user._id,
+    req.user.companyId
+  );
 
-  const projects = memberships
-    .filter((m) => m.projectId) // guard against orphaned rows
-    .map((m) => ({
-      ...m.projectId,
-      myRole: m.role,
+  let projects;
+
+  if (isAdmin) {
+    const companyProjects = await Project.find({
+      companyId: req.user.companyId,
+    })
+      .sort({ createdAt: -1 })
+      .lean();
+
+    const memberships = await ProjectMember.find({
+      userId: req.user._id,
+      projectId: { $in: companyProjects.map((p) => p._id) },
+    }).lean();
+
+    const membershipByProjectId = Object.fromEntries(
+      memberships.map((m) => [m.projectId.toString(), m.role])
+    );
+
+    projects = companyProjects.map((project) => ({
+      ...project,
+      myRole: membershipByProjectId[project._id.toString()] || "admin",
     }));
+  } else {
+    const memberships = await ProjectMember.find({ userId: req.user._id })
+      .populate("projectId")
+      .lean();
+
+    projects = memberships
+      .filter((m) => m.projectId)
+      .map((m) => ({
+        ...m.projectId,
+        myRole: m.role,
+      }));
+  }
+
+  const projectsWithLead = await attachLeadInfo(projects);
 
   return res
     .status(200)
-    .json(new ApiResponse(200, projects, "Projects fetched successfully."));
+    .json(new ApiResponse(200, projectsWithLead, "Projects fetched successfully."));
 });
 
 // GET /api/projects/:projectId
@@ -73,10 +139,21 @@ const getProjectById = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Project not found.");
   }
 
+  const leadMembership = await ProjectMember.findOne({
+    projectId: project._id,
+    role: "lead",
+  })
+    .populate("userId", "name email")
+    .lean();
+
   return res.status(200).json(
     new ApiResponse(
       200,
-      { ...project.toObject(), myRole: req.membership.role },
+      {
+        ...project.toObject(),
+        myRole: req.membership.role,
+        lead: formatLead(leadMembership),
+      },
       "Project fetched successfully."
     )
   );
@@ -153,10 +230,37 @@ const setProjectLead = asyncHandler(async (req, res) => {
     );
 });
 
+// DELETE /api/projects/:projectId
+// Fully deletes a project — including all its ProjectMember rows and Tasks.
+// Allowed for company admins and the project lead.
+// requireCompanyAdminOrProjectLead middleware runs before this.
+const deleteProject = asyncHandler(async (req, res) => {
+  const { projectId } = req.params;
+
+  const project = await Project.findOne({
+    _id: projectId,
+    companyId: req.user.companyId,
+  });
+
+  if (!project) {
+    throw new ApiError(404, "Project not found in your company.");
+  }
+
+  // Cascade delete — Mongoose doesn't do this automatically.
+  await ProjectMember.deleteMany({ projectId });
+  await Task.deleteMany({ projectId });
+  await Project.findByIdAndDelete(projectId);
+
+  return res
+    .status(200)
+    .json(new ApiResponse(200, {}, "Project deleted successfully."));
+});
+
 export {
   createProject,
   getMyProjects,
   getProjectById,
   updateProject,
   setProjectLead,
+  deleteProject,
 };

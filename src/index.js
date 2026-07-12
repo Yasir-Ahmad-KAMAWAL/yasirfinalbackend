@@ -10,9 +10,11 @@ import app from "./app.js";
 
 const PORT = process.env.PORT || 5000;
 
+let server;
+
 connectDB()
   .then(() => {
-    app.listen(PORT, () => {
+    server = app.listen(PORT, () => {
       console.log(`Server is running on port ${PORT}`);
     });
   })
@@ -20,3 +22,19 @@ connectDB()
     console.error("MongoDB connection failed:", error);
     process.exit(1);
   });
+
+// Graceful shutdown so nodemon can properly free the port on restarts (Windows fix)
+const gracefulShutdown = (signal) => {
+  console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+  if (server) {
+    server.close(() => {
+      console.log("Server closed.");
+      process.exit(0);
+    });
+  } else {
+    process.exit(0);
+  }
+};
+
+process.on("SIGTERM", () => gracefulShutdown("SIGTERM"));
+process.on("SIGINT", () => gracefulShutdown("SIGINT"));

@@ -1,19 +1,19 @@
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
-
 import authRouter from "./routes/auth.routes.js";
 import companyRouter from "./routes/company.routes.js";
 import projectRouter from "./routes/project.routes.js";
 import projectMemberRouter from "./routes/projectMember.routes.js";
 import taskRouter from "./routes/task.routes.js";
+import issuesRouter from "./routes/issues.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
 
 app.use(
   cors({
-    origin: process.env.CORS_ORIGIN,
+    origin: 'http://localhost:5173',
     credentials: true,
   })
 );
@@ -31,6 +31,7 @@ app.use("/api/companies", companyRouter);
 app.use("/api/projects", projectRouter);
 app.use("/api/projects/:projectId/members", projectMemberRouter);
 app.use("/api/projects/:projectId/tasks", taskRouter);
+app.use("/api/issues", issuesRouter);
 
 app.use(errorHandler);
 

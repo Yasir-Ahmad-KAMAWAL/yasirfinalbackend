@@ -3,6 +3,7 @@ import { ApiError } from "../utils/ApiError.js";
 import { ApiResponse } from "../utils/ApiResponse.js";
 import { User } from "../models/User.model.js";
 import { Company } from "../models/Company.model.js";
+import { ProjectMember } from "../models/ProjectMember.model.js";
 import { generateAccessAndRefreshTokens } from "../utils/generateTokens.js";
 import jwt from "jsonwebtoken";
 
@@ -178,9 +179,31 @@ const logoutUser = asyncHandler(async (req, res) => {
 
 // GET /api/auth/me
 const getCurrentUser = asyncHandler(async (req, res) => {
+  // Determine if user is a company admin/owner
+  let isCompanyAdmin = false;
+  let isProjectLead = false;
+  
+  if (req.user.companyId) {
+    const company = await Company.findById(req.user.companyId);
+    if (company) {
+      isCompanyAdmin =
+        company.owner.toString() === req.user._id.toString() ||
+        company.admins.some((a) => a.toString() === req.user._id.toString());
+    }
+    
+    // Check if user is a lead on any project
+    const leadCount = await ProjectMember.countDocuments({
+      userId: req.user._id,
+      role: "lead",
+    });
+    isProjectLead = leadCount > 0;
+  }
+
   return res
     .status(200)
-    .json(new ApiResponse(200, req.user, "Current user fetched."));
+    .json(
+      new ApiResponse(200, { ...req.user.toObject(), isCompanyAdmin, isProjectLead }, "Current user fetched.")
+    );
 });
 
 export { signupUser, loginUser, refreshAccessToken, logoutUser, getCurrentUser };

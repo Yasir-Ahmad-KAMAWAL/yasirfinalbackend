@@ -1,0 +1,8 @@
+{
+  "watch": ["src"],
+  "ext": "js,json",
+  "delay": 500,
+  "signal": "SIGTERM",
+  "legacyWatch": true,
+  "killOnExit": true
+}

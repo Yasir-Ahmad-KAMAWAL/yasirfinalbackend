@@ -7,6 +7,7 @@ import {
 } from "../controllers/task.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { requireProjectLead } from "../middlewares/requireProjectLead.middleware.js";
+import { requireProjectLeadOrCompanyAdmin } from "../middlewares/requireProjectLeadOrCompanyAdmin.middleware.js";
 import { requireProjectMember } from "../middlewares/requireProjectMember.middleware.js";
 
 const router = Router({ mergeParams: true });
@@ -15,9 +16,9 @@ const router = Router({ mergeParams: true });
 router.use(verifyJWT);
 
 router.route("/").get(requireProjectMember, getProjectTasks);
-router.route("/").post(requireProjectLead, createTask);
+router.route("/").post(requireProjectLeadOrCompanyAdmin, createTask);
 
-router.route("/:taskId").patch(requireProjectMember, updateTask);
+router.route("/:taskId").patch(requireProjectLeadOrCompanyAdmin, updateTask);
 router.route("/:taskId").delete(requireProjectLead, deleteTask);
 
 export default router;

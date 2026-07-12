@@ -5,6 +5,7 @@ import {
   getProjectById,
   updateProject,
   setProjectLead,
+  deleteProject,
 } from "../controllers/project.controller.js";
 import { verifyJWT } from "../middlewares/auth.middleware.js";
 import { requireCompanyAdmin } from "../middlewares/requireCompanyAdmin.middleware.js";
@@ -21,6 +22,7 @@ router.route("/").post(requireCompanyAdmin, createProject);
 
 router.route("/:projectId").get(requireProjectMember, getProjectById);
 router.route("/:projectId").patch(requireProjectLead, updateProject);
+router.route("/:projectId").delete(requireCompanyAdmin, deleteProject);
 router.route("/:projectId/lead").patch(requireCompanyAdmin, setProjectLead);
 
 export default router;

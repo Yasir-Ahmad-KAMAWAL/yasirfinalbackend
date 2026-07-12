@@ -26,7 +26,8 @@ const createTask = asyncHandler(async (req, res) => {
 
   // Auto-generate sequential task number within the project
   const lastTask = await Task.findOne({ projectId }).sort({ taskNumber: -1 });
-  const taskNumber = lastTask ? lastTask.taskNumber + 1 : 1;
+  const lastTaskNumber = lastTask && typeof lastTask.taskNumber === "number" ? lastTask.taskNumber : 0;
+  const taskNumber = lastTaskNumber + 1;
 
   const task = await Task.create({
     projectId,
@@ -52,10 +53,12 @@ const createTask = asyncHandler(async (req, res) => {
 const getProjectTasks = asyncHandler(async (req, res) => {
   const { projectId } = req.params;
 
-  const filter =
-    req.membership.role === "lead"
-      ? { projectId }
-      : { projectId, assignedTo: req.user._id };
+  const canViewAllTasks =
+    req.membership.role === "lead" || req.membership.role === "admin";
+
+  const filter = canViewAllTasks
+    ? { projectId }
+    : { projectId, assignedTo: req.user._id };
 
   const tasks = await Task.find(filter)
     .populate("assignedTo", "name email")
@@ -88,7 +91,7 @@ const updateTask = asyncHandler(async (req, res) => {
     throw new ApiError(404, "Task not found.");
   }
 
-  if (req.membership.role === "lead") {
+  if (req.membership.role === "lead" || req.membership.role === "admin") {
     const { title, description, assignedTo, status, priority, dueDate } = req.body;
 
     // If reassigning, make sure the new assignee is a project member
