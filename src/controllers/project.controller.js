@@ -45,7 +45,7 @@ const attachLeadInfo = async (projects) => {
 // requireCompanyAdmin middleware runs before this.
 
 const createProject = asyncHandler(async (req, res) => {
-  const { name, description, leadUserId } = req.body;
+  const { name, description, leadUserId, memberUserIds } = req.body;
 
   if (!name || !leadUserId) {
     throw new ApiError(400, "name and leadUserId are required.");
@@ -67,11 +67,49 @@ const createProject = asyncHandler(async (req, res) => {
     createdBy: req.user._id,
   });
 
+  // Add the lead
   await ProjectMember.create({
     projectId: project._id,
     userId: leadUser._id,
     role: "lead",
   });
+
+  // Add additional members if provided
+  if (Array.isArray(memberUserIds) && memberUserIds.length > 0) {
+    // Remove duplicates and exclude the lead user
+    const uniqueMemberIds = [...new Set(memberUserIds.map((id) => id.toString()))]
+      .filter((id) => id !== leadUser._id.toString());
+
+    if (uniqueMemberIds.length > 0) {
+      // Verify all members belong to this company
+      const memberUsers = await User.find({
+        _id: { $in: uniqueMemberIds },
+        companyId: req.user.companyId,
+      });
+
+      const validMemberIds = memberUsers.map((u) => u._id.toString());
+      const invalidIds = uniqueMemberIds.filter((id) => !validMemberIds.includes(id));
+
+      if (invalidIds.length > 0) {
+        // Clean up — remove the project and lead since some members are invalid
+        await Project.findByIdAndDelete(project._id);
+        await ProjectMember.deleteMany({ projectId: project._id });
+        throw new ApiError(
+          400,
+          `The following user IDs are not part of your company: ${invalidIds.join(", ")}`
+        );
+      }
+
+      // Create member entries for all valid members
+      const memberEntries = validMemberIds.map((userId) => ({
+        projectId: project._id,
+        userId,
+        role: "member",
+      }));
+
+      await ProjectMember.insertMany(memberEntries);
+    }
+  }
 
   return res
     .status(201)

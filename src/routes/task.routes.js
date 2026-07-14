@@ -18,7 +18,7 @@ router.use(verifyJWT);
 router.route("/").get(requireProjectMember, getProjectTasks);
 router.route("/").post(requireProjectLeadOrCompanyAdmin, createTask);
 
-router.route("/:taskId").patch(requireProjectLeadOrCompanyAdmin, updateTask);
-router.route("/:taskId").delete(requireProjectLead, deleteTask);
+router.route("/:taskId").patch(requireProjectMember, updateTask);
+router.route("/:taskId").delete(requireProjectLeadOrCompanyAdmin, deleteTask);
 
 export default router;
