@@ -7,9 +7,9 @@ import { Company } from "../models/Company.model.js";
 import { Task } from "../models/Task.model.js";
 
 // GET /api/issues/all
-// Returns ALL tasks across all projects the user has access to (as admin or lead).
+// Returns ALL tasks across all projects the user has access to.
 //   - Company admins/owners see every task in the company.
-//   - Project leads see every task in their lead projects.
+//   - Project members (lead or member) see every task in their projects.
 const getAllIssues = asyncHandler(async (req, res) => {
   const userId = req.user._id;
 
@@ -20,20 +20,19 @@ const getAllIssues = asyncHandler(async (req, res) => {
     (company.owner.toString() === userId.toString() ||
       company.admins.some((a) => a.toString() === userId.toString()));
 
-  // 2. Get project IDs where the user is a lead
-  const leadMemberships = await ProjectMember.find({
+  // 2. Get project IDs where the user is a lead or member
+  const memberships = await ProjectMember.find({
     userId,
-    role: "lead",
   }).lean();
-  const leadProjectIds = leadMemberships.map((m) => m.projectId);
+  const userProjectIds = memberships.map((m) => m.projectId);
 
-  if (!isCompanyAdmin && leadProjectIds.length === 0) {
+  if (!isCompanyAdmin && userProjectIds.length === 0) {
     return res
       .status(200)
       .json(new ApiResponse(200, [], "No issues available."));
   }
 
-  // 3. Build filter: admins see all company tasks, leads see their lead project tasks
+  // 3. Build filter: admins see all company tasks, members/leads see their project tasks
   let filter;
   if (isCompanyAdmin) {
     // Get all projects in the company
@@ -43,7 +42,7 @@ const getAllIssues = asyncHandler(async (req, res) => {
     const allProjectIds = companyProjects.map((p) => p._id);
     filter = { projectId: { $in: allProjectIds } };
   } else {
-    filter = { projectId: { $in: leadProjectIds } };
+    filter = { projectId: { $in: userProjectIds } };
   }
 
   const tasks = await Task.find(filter)
