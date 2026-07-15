@@ -7,6 +7,8 @@ import projectRouter from "./routes/project.routes.js";
 import projectMemberRouter from "./routes/projectMember.routes.js";
 import taskRouter from "./routes/task.routes.js";
 import issuesRouter from "./routes/issues.routes.js";
+import favoritesRouter from "./routes/favorites.routes.js";
+import messageRouter from "./routes/message.routes.js";
 import { errorHandler } from "./middlewares/error.middleware.js";
 
 const app = express();
@@ -32,6 +34,8 @@ app.use("/api/projects", projectRouter);
 app.use("/api/projects/:projectId/members", projectMemberRouter);
 app.use("/api/projects/:projectId/tasks", taskRouter);
 app.use("/api/issues", issuesRouter);
+app.use("/api/favorites", favoritesRouter);
+app.use("/api/messages", messageRouter);
 
 app.use(errorHandler);
 
