@@ -44,8 +44,16 @@ const taskSchema = new Schema(
     dueDate: {
       type: Date,
     },
+    parentTask: {
+      type: Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+    },
   },
   { timestamps: true }
 );
+
+// Index for quickly finding sub-tasks of a parent
+taskSchema.index({ parentTask: 1 });
 
 export const Task = mongoose.model("Task", taskSchema);

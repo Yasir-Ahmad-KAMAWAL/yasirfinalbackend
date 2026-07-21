@@ -7,6 +7,8 @@ import { getCompanyAdminStatus } from "../utils/companyAdmin.js";
 // Confirms req.user has ANY membership (lead or member) on the project,
 // or is a company admin viewing a project in their company.
 // Attaches the membership doc to req.membership so controllers can check .role.
+// If the user is a company admin AND a project member, the role is overridden
+// to "admin" so they see all tasks (same as a lead would).
 export const requireProjectMember = asyncHandler(async (req, res, next) => {
   const { projectId } = req.params;
 
@@ -20,6 +22,12 @@ export const requireProjectMember = asyncHandler(async (req, res, next) => {
   });
 
   if (membership) {
+    // If the user is a company admin, override their role to "admin"
+    // so they see all tasks even if they were added as a plain member.
+    const { isAdmin } = await getCompanyAdminStatus(req.user._id, req.user.companyId);
+    if (isAdmin) {
+      membership.role = "admin";
+    }
     req.membership = membership;
     return next();
   }

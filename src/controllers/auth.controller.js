@@ -15,15 +15,33 @@ const cookieOptions = {
   sameSite: "strict",
 };
 
+const SECURITY_QUESTIONS = [
+  "What is your mother's maiden name?",
+  "What was the name of your first pet?",
+  "What city were you born in?",
+];
+
 // POST /api/auth/signup
 // Two cases:
 //   1. No companyId provided -> user is creating a brand new company, becomes its owner.
 //   2. companyId provided -> user is joining an existing company as a plain employee.
 const signupUser = asyncHandler(async (req, res) => {
-  const { name, email, password, companyId, companyName } = req.body;
+  const { name, email, password, companyId, companyName, securityQuestion, securityAnswer } = req.body;
 
   if (!name || !email || !password) {
     throw new ApiError(400, "Name, email, and password are required.");
+  }
+
+  if (!securityQuestion || !securityAnswer) {
+    throw new ApiError(400, "Security question and answer are required.");
+  }
+
+  if (!SECURITY_QUESTIONS.includes(securityQuestion)) {
+    throw new ApiError(400, "Invalid security question selected.");
+  }
+
+  if (securityAnswer.length < 2) {
+    throw new ApiError(400, "Security answer must be at least 2 characters.");
   }
 
   const existingUser = await User.findOne({ email: email.toLowerCase() });
@@ -52,7 +70,7 @@ const signupUser = asyncHandler(async (req, res) => {
     }
 
     // Create user first (without companyId), then create company, then link back.
-    createdUser = await User.create({ name, email, password });
+    createdUser = await User.create({ name, email, password, securityQuestion, securityAnswer });
 
     const company = await Company.create({
       name: companyName,
@@ -68,11 +86,13 @@ const signupUser = asyncHandler(async (req, res) => {
       email,
       password,
       companyId: resolvedCompanyId,
+      securityQuestion,
+      securityAnswer,
     });
   }
 
   const safeUser = await User.findById(createdUser._id).select(
-    "-password -refreshToken"
+    "-password -refreshToken -securityAnswer"
   );
 
   return res
@@ -164,6 +184,57 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
     );
 });
 
+// POST /api/auth/forgot-password
+// Step 1: Verify email exists and return the user's security question
+const forgotPassword = asyncHandler(async (req, res) => {
+  const { email } = req.body;
+
+  if (!email) {
+    throw new ApiError(400, "Email is required.");
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    throw new ApiError(404, "No account found with this email address.");
+  }
+
+  return res.status(200).json(
+    new ApiResponse(200, { securityQuestion: user.securityQuestion }, "Security question found.")
+  );
+});
+
+// POST /api/auth/reset-password
+// Step 2: Verify security answer and reset the password
+const resetPassword = asyncHandler(async (req, res) => {
+  const { email, securityAnswer, newPassword } = req.body;
+
+  if (!email || !securityAnswer || !newPassword) {
+    throw new ApiError(400, "Email, security answer, and new password are required.");
+  }
+
+  if (newPassword.length < 6) {
+    throw new ApiError(400, "New password must be at least 6 characters.");
+  }
+
+  const user = await User.findOne({ email: email.toLowerCase() });
+  if (!user) {
+    throw new ApiError(404, "No account found with this email address.");
+  }
+
+  const isAnswerCorrect = await user.isSecurityAnswerCorrect(securityAnswer);
+  if (!isAnswerCorrect) {
+    throw new ApiError(401, "Security answer is incorrect.");
+  }
+
+  user.password = newPassword;
+  user.refreshToken = undefined;
+  await user.save();
+
+  return res.status(200).json(
+    new ApiResponse(200, {}, "Password reset successfully. Please log in with your new password.")
+  );
+});
+
 // POST /api/auth/logout
 const logoutUser = asyncHandler(async (req, res) => {
   await User.findByIdAndUpdate(req.user._id, {
@@ -206,4 +277,4 @@ const getCurrentUser = asyncHandler(async (req, res) => {
     );
 });
 
-export { signupUser, loginUser, refreshAccessToken, logoutUser, getCurrentUser };
+export { signupUser, loginUser, refreshAccessToken, logoutUser, getCurrentUser, forgotPassword, resetPassword, SECURITY_QUESTIONS };

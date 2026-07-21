@@ -45,18 +45,34 @@ const getAllIssues = asyncHandler(async (req, res) => {
     filter = { projectId: { $in: userProjectIds } };
   }
 
-  const tasks = await Task.find(filter)
+  const tasks = await Task.find({ ...filter, parentTask: null })
     .populate("assignedTo", "name email")
     .populate("assignedBy", "name email")
     .populate("projectId", "name")
     .sort({ createdAt: -1 });
 
-  // Map tasks to include projectName
-  const tasksWithProjectName = tasks.map((task) => ({
-    ...task.toObject(),
-    projectName: task.projectId?.name || "Unknown",
-    projectId: task.projectId?._id || task.projectId,
-  }));
+  // Get sub-task counts for each task
+  const taskIds = tasks.map((t) => t._id);
+  const subTaskCounts = await Task.aggregate([
+    { $match: { parentTask: { $in: taskIds } } },
+    { $group: { _id: "$parentTask", count: { $sum: 1 } } },
+  ]);
+
+  const countMap = {};
+  subTaskCounts.forEach((item) => {
+    countMap[item._id.toString()] = item.count;
+  });
+
+  // Map tasks to include projectName and subTaskCount
+  const tasksWithProjectName = tasks.map((task) => {
+    const taskObj = task.toObject();
+    return {
+      ...taskObj,
+      projectName: task.projectId?.name || "Unknown",
+      projectId: task.projectId?._id || task.projectId,
+      subTaskCount: countMap[task._id.toString()] || 0,
+    };
+  });
 
   return res
     .status(200)
